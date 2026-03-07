@@ -3,9 +3,18 @@ import { useAppStore } from "@/store/useAppStore";
 import { useTranslation } from "@/hooks/useTranslation";
 import { allExams } from "@/data/syllabus";
 
-const ExamSelectScreen = () => {
+interface ExamSelectScreenProps {
+  onExamSelected?: () => void;
+}
+
+const ExamSelectScreen = ({ onExamSelected }: ExamSelectScreenProps) => {
   const { t, language } = useTranslation();
   const selectExam = useAppStore((s) => s.selectExam);
+
+  const handleSelect = (examId: string) => {
+    selectExam(examId);
+    onExamSelected?.();
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4 py-12">
@@ -30,10 +39,8 @@ const ExamSelectScreen = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.1 + index * 0.1 }}
-              onClick={() => selectExam(exam.id)}
-              style={{
-                borderColor: `hsl(${exam.color} / 0.3)`,
-              }}
+              onClick={() => handleSelect(exam.id)}
+              style={{ borderColor: `hsl(${exam.color} / 0.3)` }}
             >
               <div className="flex items-center gap-4">
                 <div
