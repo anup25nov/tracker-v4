@@ -78,7 +78,6 @@ const ProfileScreen = ({ onChangeExam }: ProfileScreenProps) => {
   const getSubjectProgress = useAppStore((s) => s.getSubjectProgress);
   const [showReset, setShowReset] = useState(false);
 
-  const overall = getOverallProgress();
   const exam = allExams.find((e) => e.id === selectedExamId);
   const color = exam?.color || "217 91% 60%";
 
