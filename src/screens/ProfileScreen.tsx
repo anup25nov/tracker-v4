@@ -72,30 +72,23 @@ const ProfileScreen = ({ onChangeExam }: ProfileScreenProps) => {
   const { t, language } = useTranslation();
   const setLanguage = useAppStore((s) => s.setLanguage);
   const resetProgress = useAppStore((s) => s.resetProgress);
-  const getOverallProgress = useAppStore((s) => s.getOverallProgress);
   const selectedExamId = useAppStore((s) => s.selectedExamId);
   const syllabus = useAppStore((s) => s.syllabus);
-  const getSubjectProgress = useAppStore((s) => s.getSubjectProgress);
   const [showReset, setShowReset] = useState(false);
 
-  const overall = getOverallProgress();
   const exam = allExams.find((e) => e.id === selectedExamId);
   const color = exam?.color || "217 91% 60%";
+  const totalTopics = syllabus.reduce((a, s) => a + s.topics.length, 0);
 
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
         title: "SSC Syllabus Tracker",
-        text: `I've completed ${overall.percent}% of my ${exam?.name || "SSC"} syllabus! Track yours too.`,
+        text: `Track your ${exam?.name || "SSC"} syllabus easily with this app!`,
         url: window.location.href,
       });
     }
   };
-
-  // Stats
-  const completedSubjects = syllabus.filter(
-    (s) => s.topics.every((t) => t.completed)
-  ).length;
 
   const menuItems = [
     {
@@ -128,7 +121,7 @@ const ProfileScreen = ({ onChangeExam }: ProfileScreenProps) => {
 
   return (
     <div className="min-h-screen px-3 sm:px-4 pt-8 sm:pt-10 pb-24 max-w-lg mx-auto space-y-4 sm:space-y-5">
-      {/* Profile Header with gradient */}
+      {/* Profile Header - Exam focused */}
       <motion.div
         className="rounded-2xl sm:rounded-3xl p-5 sm:p-6 relative overflow-hidden"
         style={{
@@ -137,78 +130,22 @@ const ProfileScreen = ({ onChangeExam }: ProfileScreenProps) => {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        {/* Decorative circles */}
         <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full opacity-20" style={{ background: "white" }} />
         <div className="absolute -bottom-6 -left-6 w-24 h-24 rounded-full opacity-10" style={{ background: "white" }} />
 
         <div className="relative flex items-center gap-4">
           <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-3xl sm:text-4xl shadow-lg">
-            🎯
+            {exam?.icon || "🎯"}
           </div>
           <div className="flex-1 min-w-0">
-            <h2 className="text-lg sm:text-xl font-bold text-white">{t("sscAspirant")}</h2>
-            {exam && (
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-white/20 text-white mt-1.5">
-                {exam.icon} {language === "hi" ? exam.nameHi : exam.name}
-              </div>
-            )}
+            <p className="text-[10px] sm:text-xs text-white/60 font-medium uppercase tracking-wider">{t("changeExam")}</p>
+            <h2 className="text-lg sm:text-xl font-bold text-white mt-0.5">
+              {exam ? (language === "hi" ? exam.nameHi : exam.name) : t("selectExam")}
+            </h2>
+            <p className="text-[10px] sm:text-xs text-white/70 mt-1">
+              {syllabus.length} {t("subjects")} • {totalTopics} {t("topics")}
+            </p>
           </div>
-        </div>
-
-        {/* Stats row */}
-        <div className="relative grid grid-cols-3 gap-2 mt-5">
-          {[
-            { value: overall.percent + "%", label: t("completed") },
-            { value: `${overall.completed}/${overall.total}`, label: t("topics") },
-            { value: completedSubjects + "/" + syllabus.length, label: t("subjects") },
-          ].map((stat, i) => (
-            <div key={i} className="bg-white/15 backdrop-blur-sm rounded-xl p-2.5 sm:p-3 text-center">
-              <p className="text-base sm:text-lg font-extrabold text-white">{stat.value}</p>
-              <p className="text-[9px] sm:text-[10px] text-white/70 font-medium">{stat.label}</p>
-            </div>
-          ))}
-        </div>
-      </motion.div>
-
-      {/* Subject Progress Mini Cards */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
-        <h3 className="text-xs sm:text-sm font-bold text-foreground mb-2.5 px-1">{t("subjectProgress")}</h3>
-        <div className="grid grid-cols-2 gap-2">
-          {syllabus.map((subject) => {
-            const progress = getSubjectProgress(subject.id);
-            const sColor = exam?.color || "217 91% 60%";
-            return (
-              <div
-                key={subject.id}
-                className="rounded-xl p-3 flex items-center gap-2.5"
-                style={{
-                  background: `hsl(var(--card))`,
-                  border: `1px solid hsl(var(--border))`,
-                }}
-              >
-                <span className="text-lg">{subject.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] sm:text-xs font-semibold text-foreground truncate">
-                    {language === "hi" ? subject.nameHi : subject.name}
-                  </p>
-                  <div className="w-full h-1.5 rounded-full bg-secondary mt-1 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-500"
-                      style={{
-                        width: `${progress}%`,
-                        background: progress === 100 ? "hsl(142 71% 45%)" : `hsl(${sColor})`,
-                      }}
-                    />
-                  </div>
-                </div>
-                <span className="text-[10px] font-bold text-muted-foreground">{progress}%</span>
-              </div>
-            );
-          })}
         </div>
       </motion.div>
 
