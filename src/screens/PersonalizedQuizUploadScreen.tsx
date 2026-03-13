@@ -4,6 +4,7 @@ import { ArrowLeft, Upload, FileText, Image, StickyNote, Loader2, Sparkles, Aler
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
 import { savePersonalizedQuiz, getRemainingUploads, type PersonalizedQuizQuestion } from "@/lib/personalizedQuiz";
+import { logErrorToFirestore } from "@/lib/firestoreErrorLog";
 import { toast } from "sonner";
 
 interface Props {
@@ -139,6 +140,14 @@ const PersonalizedQuizUploadScreen = ({ onBack, onQuizGenerated }: Props) => {
         );
       }
 
+      // Validate that the success response is actually JSON
+      const successContentType = resp.headers.get("content-type") || "";
+      if (!successContentType.includes("application/json")) {
+        const bodyPreview = await resp.text();
+        console.error("Non-JSON success response:", bodyPreview.slice(0, 200));
+        throw new Error(isHi ? "सर्वर से अमान्य प्रतिक्रिया। Edge function deploy है?" : "Invalid response from server. Is the edge function deployed?");
+      }
+
       const quizData = await resp.json();
 
       // Save to Firestore
@@ -156,6 +165,12 @@ const PersonalizedQuizUploadScreen = ({ onBack, onQuizGenerated }: Props) => {
       const msg = e?.message || (isHi ? "क्विज़ बनाने में त्रुटि" : "Failed to generate quiz");
       setError(msg);
       toast.error(msg);
+      // Log to Firebase
+      logErrorToFirestore({
+        message: msg,
+        stack: e?.stack,
+        source: "PersonalizedQuizUploadScreen.handleGenerate",
+      });
     } finally {
       setGenerating(false);
     }
