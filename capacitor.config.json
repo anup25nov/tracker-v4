@@ -1,9 +1,16 @@
 {
-  "appId": "app.lovable.cc6c5ed3ff674b4e8bf108e266469c2d",
-  "appName": "SSC Syllabus Tracker",
+  "appId": "com.sscexamsathi.app",
+  "appName": "SSC Exam Sathi",
   "webDir": "dist",
-  "server": {
-    "url": "https://cc6c5ed3-ff67-4b4e-8bf1-08e266469c2d.lovableproject.com?forceHideBadge=true",
-    "cleartext": true
+  "plugins": {
+    "FirebaseAuthentication": {
+      "providers": ["google.com"],
+      "skipNativeAuth": false
+    },
+    "StatusBar": {
+      "overlaysWebView": false,
+      "style": "DARK",
+      "backgroundColor": "#0f172a"
+    }
   }
 }

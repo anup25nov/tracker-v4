@@ -1,7 +1,12 @@
 import { motion } from "framer-motion";
 import { useAppStore } from "@/store/useAppStore";
 import { useTranslation } from "@/hooks/useTranslation";
-import { allExams } from "@/data/syllabus";
+import { allExams, countExamUnits } from "@/data/syllabus";
+import { Lock } from "lucide-react";
+import SSCLogo from "@/components/SSCLogo";
+
+const EXAM_IDS_ON_SELECT = ["ssc-cgl", "railway", "bank"] as const;
+const AVAILABLE_EXAM_IDS = ["ssc-cgl"];
 
 interface ExamSelectScreenProps {
   onExamSelected?: () => void;
@@ -10,8 +15,10 @@ interface ExamSelectScreenProps {
 const ExamSelectScreen = ({ onExamSelected }: ExamSelectScreenProps) => {
   const { t, language } = useTranslation();
   const selectExam = useAppStore((s) => s.selectExam);
+  const examsToShow = allExams.filter((e) => EXAM_IDS_ON_SELECT.includes(e.id as (typeof EXAM_IDS_ON_SELECT)[number]));
 
   const handleSelect = (examId: string) => {
+    if (!AVAILABLE_EXAM_IDS.includes(examId)) return; // Bank coming soon
     selectExam(examId);
     onExamSelected?.();
   };
@@ -30,37 +37,56 @@ const ExamSelectScreen = ({ onExamSelected }: ExamSelectScreenProps) => {
       </motion.div>
 
       <div className="w-full max-w-md space-y-4">
-        {allExams.map((exam, index) => {
-          const totalTopics = exam.subjects.reduce((a, s) => a + s.topics.length, 0);
+        {examsToShow.map((exam, index) => {
+          const isAvailable = AVAILABLE_EXAM_IDS.includes(exam.id);
+          const totalTopics = countExamUnits(exam);
           return (
             <motion.button
               key={exam.id}
-              className="glass-card w-full p-5 text-left active:scale-[0.97] transition-transform"
+              className={`glass-card w-full p-5 text-left transition-transform ${
+                isAvailable ? "active:scale-[0.97]" : "opacity-60 cursor-not-allowed"
+              }`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.1 + index * 0.1 }}
               onClick={() => handleSelect(exam.id)}
               style={{ borderColor: `hsl(${exam.color} / 0.3)` }}
+              disabled={!isAvailable}
             >
               <div className="flex items-center gap-4">
                 <div
-                  className="text-3xl w-14 h-14 flex items-center justify-center rounded-2xl"
+                  className="w-14 h-14 flex items-center justify-center rounded-2xl overflow-hidden shrink-0"
                   style={{ background: `hsl(${exam.color} / 0.15)` }}
                 >
-                  {exam.icon}
+                  {exam.id === "ssc-cgl" ? <SSCLogo size={40} /> : <span className="text-3xl">{exam.icon} </span>}
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-base font-bold text-foreground">
-                    {language === "hi" ? exam.nameHi : exam.name}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-foreground">
+                      {language === "hi" ? exam.nameHi : exam.name}
+                    </h3>
+                    {!isAvailable && (
+                      <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full bg-warning/15 text-warning border border-warning/30">
+                        {language === "hi" ? "जल्द आ रहा है" : "Coming Soon"}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {language === "hi" ? exam.descriptionHi : exam.description}
                   </p>
                   <p className="text-xs mt-1" style={{ color: `hsl(${exam.color})` }}>
-                    {exam.subjects.length} {t("subjects")} • {totalTopics} {t("topics")}
+                    {isAvailable
+                      ? `${exam.subjects.length} ${t("subjects")} • ${totalTopics} ${t("topics")}`
+                      : language === "hi"
+                        ? "जल्द आ रहा है"
+                        : "Coming soon"}
                   </p>
                 </div>
-                <div className="text-muted-foreground text-xl">→</div>
+                {isAvailable ? (
+                  <div className="text-muted-foreground text-xl">→</div>
+                ) : (
+                  <Lock size={18} className="text-muted-foreground" />
+                )}
               </div>
             </motion.button>
           );

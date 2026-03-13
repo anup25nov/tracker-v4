@@ -2,11 +2,21 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { allExams, Subject } from "@/data/syllabus";
 import { Language } from "@/data/translations";
+import { saveProgressToFirestore, loadProgressFromFirestore } from "@/lib/firestoreSync";
+import { auth } from "@/lib/firebase";
 
 interface AchievementEvent {
   subjectId: string;
   milestone: 25 | 50 | 75 | 100;
   timestamp: number;
+}
+
+export interface LocalQuizResult {
+  topicId: string;
+  topicName: string;
+  score: number;
+  totalQuestions: number;
+  attemptedAt: number;
 }
 
 interface AppState {
@@ -15,17 +25,23 @@ interface AppState {
   language: Language;
   achievedMilestones: Record<string, number[]>;
   lastAchievement: AchievementEvent | null;
+  quizResults: LocalQuizResult[];
 
   selectExam: (examId: string) => void;
-  toggleTopic: (subjectId: string, topicId: string) => void;
+  toggleTopic: (subjectId: string, topicId: string, subtopicId?: string) => void;
   setLanguage: (lang: Language) => void;
   resetProgress: () => void;
   clearAchievement: () => void;
+  saveQuizResult: (result: LocalQuizResult) => void;
+  getQuizResult: (topicId: string) => LocalQuizResult | undefined;
   getSubjectProgress: (subjectId: string) => number;
+  getSubjectUnits: (subjectId: string) => { completed: number; total: number };
   getOverallProgress: () => { completed: number; total: number; percent: number };
   getWeakestSubject: () => Subject | null;
   getStrongestSubject: () => Subject | null;
   getFirstIncompleteSubject: () => Subject | null;
+  loadFromFirestore: (uid: string) => Promise<void>;
+  syncToFirestore: () => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -36,11 +52,17 @@ export const useAppStore = create<AppState>()(
       language: "en",
       achievedMilestones: {},
       lastAchievement: null,
+      quizResults: [],
 
       selectExam: (examId) => {
+        const state = get();
+        if (state.selectedExamId === examId && state.syllabus.length > 0) {
+          set({ selectedExamId: examId });
+          return;
+        }
+
         const exam = allExams.find((e) => e.id === examId);
         if (!exam) return;
-        // Deep clone to avoid reference issues
         const freshSyllabus = JSON.parse(JSON.stringify(exam.subjects)) as Subject[];
         set({
           selectedExamId: examId,
@@ -48,17 +70,36 @@ export const useAppStore = create<AppState>()(
           achievedMilestones: {},
           lastAchievement: null,
         });
+
+        // Auto-load from Firestore if user is logged in (one doc per user per exam)
+        const uid = auth.currentUser?.uid;
+        if (uid) {
+          loadProgressFromFirestore(uid, examId, freshSyllabus).then((saved) => {
+            if (saved) {
+              set({ syllabus: saved.syllabus, achievedMilestones: saved.achievedMilestones });
+            }
+          });
+        }
       },
 
-      toggleTopic: (subjectId, topicId) => {
+      toggleTopic: (subjectId, topicId, subtopicId) => {
         const state = get();
         const newSyllabus = state.syllabus.map((subject) => {
           if (subject.id !== subjectId) return subject;
           return {
             ...subject,
-            topics: subject.topics.map((topic) =>
-              topic.id === topicId ? { ...topic, completed: !topic.completed } : topic
-            ),
+            topics: subject.topics.map((topic) => {
+              if (topic.id !== topicId) return topic;
+              if (subtopicId && topic.subtopics) {
+                return {
+                  ...topic,
+                  subtopics: topic.subtopics.map((st) =>
+                    st.id === subtopicId ? { ...st, completed: !st.completed } : st
+                  ),
+                };
+              }
+              return { ...topic, completed: !topic.completed };
+            }),
           };
         });
 
@@ -67,9 +108,21 @@ export const useAppStore = create<AppState>()(
         const newMilestones = { ...state.achievedMilestones };
 
         if (subject) {
-          const completed = subject.topics.filter((t) => t.completed).length;
-          const total = subject.topics.length;
-          const percent = Math.round((completed / total) * 100);
+          const { completed, total } = (() => {
+            let c = 0;
+            let t = 0;
+            for (const top of subject.topics) {
+              if (top.subtopics?.length) {
+                t += top.subtopics.length;
+                c += top.subtopics.filter((st) => st.completed).length;
+              } else {
+                t += 1;
+                if (top.completed) c += 1;
+              }
+            }
+            return { completed: c, total: t };
+          })();
+          const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
           const milestones: (25 | 50 | 75 | 100)[] = [25, 50, 75, 100];
           const existing = newMilestones[subjectId] || [];
 
@@ -83,6 +136,13 @@ export const useAppStore = create<AppState>()(
         }
 
         set({ syllabus: newSyllabus, achievedMilestones: newMilestones, lastAchievement: newAchievement });
+
+        // Sync to Firestore after every toggle (one doc per user per exam)
+        const uid = auth.currentUser?.uid;
+        const examId = get().selectedExamId;
+        if (uid && examId) {
+          saveProgressToFirestore(uid, examId, newSyllabus, newMilestones);
+        }
       },
 
       setLanguage: (lang) => set({ language: lang }),
@@ -92,27 +152,88 @@ export const useAppStore = create<AppState>()(
         if (!state.selectedExamId) return;
         const exam = allExams.find((e) => e.id === state.selectedExamId);
         if (!exam) return;
+        const freshSyllabus = JSON.parse(JSON.stringify(exam.subjects)) as Subject[];
         set({
-          syllabus: JSON.parse(JSON.stringify(exam.subjects)),
+          syllabus: freshSyllabus,
           achievedMilestones: {},
           lastAchievement: null,
         });
+        // Sync reset to Firestore (only this exam's doc is updated)
+        const uid = auth.currentUser?.uid;
+        if (uid) {
+          saveProgressToFirestore(uid, state.selectedExamId, freshSyllabus, {});
+        }
       },
 
       clearAchievement: () => set({ lastAchievement: null }),
 
+      saveQuizResult: (result) => {
+        const state = get();
+        // Replace existing result for same topic or add new
+        const filtered = state.quizResults.filter((r) => r.topicId !== result.topicId);
+        set({ quizResults: [...filtered, result] });
+      },
+
+      getQuizResult: (topicId) => {
+        return get().quizResults.find((r) => r.topicId === topicId);
+      },
+
       getSubjectProgress: (subjectId) => {
         const subject = get().syllabus.find((s) => s.id === subjectId);
         if (!subject) return 0;
-        const completed = subject.topics.filter((t) => t.completed).length;
-        return Math.round((completed / subject.topics.length) * 100);
+        let completed = 0;
+        let total = 0;
+        for (const t of subject.topics) {
+          if (t.subtopics?.length) {
+            total += t.subtopics.length;
+            completed += t.subtopics.filter((st) => st.completed).length;
+          } else {
+            total += 1;
+            if (t.completed) completed += 1;
+          }
+        }
+        return total > 0 ? Math.round((completed / total) * 100) : 0;
+      },
+
+      getSubjectUnits: (subjectId) => {
+        const subject = get().syllabus.find((s) => s.id === subjectId);
+        if (!subject) return { completed: 0, total: 0 };
+        let completed = 0;
+        let total = 0;
+        for (const t of subject.topics) {
+          if (t.subtopics?.length) {
+            total += t.subtopics.length;
+            completed += t.subtopics.filter((st) => st.completed).length;
+          } else {
+            total += 1;
+            if (t.completed) completed += 1;
+          }
+        }
+        return { completed, total };
       },
 
       getOverallProgress: () => {
-        const syllabus = get().syllabus;
-        const total = syllabus.reduce((acc, s) => acc + s.topics.length, 0);
-        const completed = syllabus.reduce((acc, s) => acc + s.topics.filter((t) => t.completed).length, 0);
-        return { completed, total, percent: total > 0 ? Math.round((completed / total) * 100) : 0 };
+        const state = get();
+        const syllabus = state.syllabus;
+        if (syllabus.length === 0) return { completed: 0, total: 0, percent: 0 };
+        // Overall percent = average of subject percentages (each subject has equal weight)
+        let sumSubjectPercent = 0;
+        let total = 0;
+        let completed = 0;
+        for (const s of syllabus) {
+          sumSubjectPercent += state.getSubjectProgress(s.id);
+          for (const t of s.topics) {
+            if (t.subtopics?.length) {
+              total += t.subtopics.length;
+              completed += t.subtopics.filter((st) => st.completed).length;
+            } else {
+              total += 1;
+              if (t.completed) completed += 1;
+            }
+          }
+        }
+        const percent = Math.round(sumSubjectPercent / syllabus.length);
+        return { completed, total, percent };
       },
 
       getWeakestSubject: () => {
@@ -121,8 +242,18 @@ export const useAppStore = create<AppState>()(
         let weakest = state.syllabus[0];
         let minProgress = 100;
         for (const s of state.syllabus) {
-          const completed = s.topics.filter((t) => t.completed).length;
-          const p = s.topics.length > 0 ? (completed / s.topics.length) * 100 : 0;
+          let c = 0;
+          let t = 0;
+          for (const top of s.topics) {
+            if (top.subtopics?.length) {
+              t += top.subtopics.length;
+              c += top.subtopics.filter((st) => st.completed).length;
+            } else {
+              t += 1;
+              if (top.completed) c += 1;
+            }
+          }
+          const p = t > 0 ? (c / t) * 100 : 0;
           if (p < minProgress) { minProgress = p; weakest = s; }
         }
         return weakest;
@@ -134,8 +265,18 @@ export const useAppStore = create<AppState>()(
         let strongest = state.syllabus[0];
         let maxProgress = -1;
         for (const s of state.syllabus) {
-          const completed = s.topics.filter((t) => t.completed).length;
-          const p = s.topics.length > 0 ? (completed / s.topics.length) * 100 : 0;
+          let c = 0;
+          let t = 0;
+          for (const top of s.topics) {
+            if (top.subtopics?.length) {
+              t += top.subtopics.length;
+              c += top.subtopics.filter((st) => st.completed).length;
+            } else {
+              t += 1;
+              if (top.completed) c += 1;
+            }
+          }
+          const p = t > 0 ? (c / t) * 100 : 0;
           if (p > maxProgress) { maxProgress = p; strongest = s; }
         }
         return strongest;
@@ -143,7 +284,29 @@ export const useAppStore = create<AppState>()(
 
       getFirstIncompleteSubject: () => {
         const state = get();
-        return state.syllabus.find((s) => s.topics.some((t) => !t.completed)) || null;
+        return state.syllabus.find((s) =>
+          s.topics.some((t) => {
+            if (t.subtopics?.length) return t.subtopics.some((st) => !st.completed);
+            return !t.completed;
+          })
+        ) || null;
+      },
+
+      loadFromFirestore: async (uid: string) => {
+        const state = get();
+        if (!state.selectedExamId || state.syllabus.length === 0) return;
+        const saved = await loadProgressFromFirestore(uid, state.selectedExamId, state.syllabus);
+        if (saved) {
+          set({ syllabus: saved.syllabus, achievedMilestones: saved.achievedMilestones });
+        }
+      },
+
+      syncToFirestore: () => {
+        const state = get();
+        const uid = auth.currentUser?.uid;
+        if (uid && state.selectedExamId) {
+          saveProgressToFirestore(uid, state.selectedExamId, state.syllabus, state.achievedMilestones);
+        }
       },
     }),
     { name: "ssc-tracker-v2" }

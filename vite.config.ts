@@ -16,11 +16,12 @@ export default defineConfig(({ mode }) => ({
     react(),
     mode === "development" && componentTagger(),
     VitePWA({
+      disable: process.env.BUILD_FOR_ANDROID === "1",
       registerType: "autoUpdate",
-      includeAssets: ["favicon.ico", "icons/icon-192.png", "icons/icon-512.png"],
+      includeAssets: ["favicon.ico", "app_logo.png"],
       manifest: {
-        name: "SSC Syllabus Tracker",
-        short_name: "SSC Tracker",
+        name: "SSC Exam Sathi",
+        short_name: "SSC Exam Sathi",
         description: "Track your SSC exam syllabus completion easily",
         theme_color: "#0f172a",
         background_color: "#0f172a",
@@ -28,9 +29,9 @@ export default defineConfig(({ mode }) => ({
         orientation: "portrait",
         start_url: "/",
         icons: [
-          { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
-          { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
-          { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+          { src: "/app_logo.png", sizes: "192x192", type: "image/jpeg" },
+          { src: "/app_logo.png", sizes: "512x512", type: "image/jpeg" },
+          { src: "/app_logo.png", sizes: "512x512", type: "image/jpeg", purpose: "maskable" },
         ],
       },
       workbox: {
@@ -49,6 +50,11 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+    },
+  },
+  build: {
+    rollupOptions: {
+      external: ["@capacitor/status-bar"],
     },
   },
 }));
