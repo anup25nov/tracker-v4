@@ -165,6 +165,12 @@ const PersonalizedQuizUploadScreen = ({ onBack, onQuizGenerated }: Props) => {
       const msg = e?.message || (isHi ? "क्विज़ बनाने में त्रुटि" : "Failed to generate quiz");
       setError(msg);
       toast.error(msg);
+      // Log to Firebase
+      logErrorToFirestore({
+        message: msg,
+        stack: e?.stack,
+        source: "PersonalizedQuizUploadScreen.handleGenerate",
+      });
     } finally {
       setGenerating(false);
     }
