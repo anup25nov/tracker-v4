@@ -4,6 +4,7 @@ import { ArrowLeft, Upload, FileText, Image, StickyNote, Loader2, Sparkles, Aler
 import { useTranslation } from "@/hooks/useTranslation";
 import { useAuth } from "@/hooks/useAuth";
 import { savePersonalizedQuiz, getRemainingUploads, type PersonalizedQuizQuestion } from "@/lib/personalizedQuiz";
+import { logErrorToFirestore } from "@/lib/firestoreErrorLog";
 import { toast } from "sonner";
 
 interface Props {
