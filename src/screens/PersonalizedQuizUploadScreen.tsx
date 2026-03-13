@@ -140,6 +140,14 @@ const PersonalizedQuizUploadScreen = ({ onBack, onQuizGenerated }: Props) => {
         );
       }
 
+      // Validate that the success response is actually JSON
+      const successContentType = resp.headers.get("content-type") || "";
+      if (!successContentType.includes("application/json")) {
+        const bodyPreview = await resp.text();
+        console.error("Non-JSON success response:", bodyPreview.slice(0, 200));
+        throw new Error(isHi ? "सर्वर से अमान्य प्रतिक्रिया। Edge function deploy है?" : "Invalid response from server. Is the edge function deployed?");
+      }
+
       const quizData = await resp.json();
 
       // Save to Firestore
