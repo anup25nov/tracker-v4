@@ -127,8 +127,16 @@ const PersonalizedQuizUploadScreen = ({ onBack, onQuizGenerated }: Props) => {
       });
 
       if (!resp.ok) {
-        const errData = await resp.json().catch(() => ({}));
-        throw new Error(errData.error || `Error ${resp.status}`);
+        const contentType = resp.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const errData = await resp.json().catch(() => ({}));
+          throw new Error(errData.error || `Error ${resp.status}`);
+        }
+        throw new Error(
+          resp.status === 404
+            ? (isHi ? "Quiz API उपलब्ध नहीं है। कृपया बाद में प्रयास करें।" : "Quiz API not available. Please ensure the edge function is deployed.")
+            : `Server error ${resp.status}`
+        );
       }
 
       const quizData = await resp.json();
